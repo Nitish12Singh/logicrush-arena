@@ -24,6 +24,27 @@ async function authRequest(path: string, options: RequestInit = {}) {
   return data;
 }
 
+async function roomRequest(path: string, options: RequestInit = {}) {
+  if (!API_BASE_URL) {
+    throw new Error('Quiz rooms are not configured for this deployment. The site owner must connect the backend API.');
+  }
+
+  const response = await fetch(`${API_BASE_URL}/rooms/${path}`, options);
+  let data: any;
+
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error('The quiz server returned an invalid response.');
+  }
+
+  if (!response.ok) {
+    throw new Error(data.error || `Quiz request failed (HTTP ${response.status}).`);
+  }
+
+  return data;
+}
+
 function getAuthHeaders(): HeadersInit {
   const token = localStorage.getItem('logicrush_token');
   return {
@@ -98,29 +119,25 @@ export const api = {
 
   // Rooms
   async createRoom(data: any) {
-    const res = await fetch(`${API_BASE_URL}/rooms/create`, {
+    return roomRequest('create', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(data)
     });
-    return res.json();
   },
 
   async getRoomByCode(code: string) {
-    const res = await fetch(`${API_BASE_URL}/rooms/code/${code}`);
-    return res.json();
+    return roomRequest(`code/${encodeURIComponent(code)}`);
   },
 
   async getPublicRooms() {
-    const res = await fetch(`${API_BASE_URL}/rooms/public`);
-    return res.json();
+    return roomRequest('public');
   },
 
   async getMyRooms() {
-    const res = await fetch(`${API_BASE_URL}/rooms/my-rooms`, {
+    return roomRequest('my-rooms', {
       headers: getAuthHeaders()
     });
-    return res.json();
   },
 
   // Analytics & Weakness

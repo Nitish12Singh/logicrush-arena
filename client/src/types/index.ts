@@ -81,10 +81,15 @@ export interface Room {
   title: string;
   topicId: string;
   difficulty: string;
-  max_players: number;
-  question_count: number;
-  time_per_question: number;
-  powerups_enabled: boolean;
+  host_id?: string;
+  topic_id?: string;
+  max_players?: number;
+  question_count?: number;
+  questionCount?: number;
+  time_per_question?: number;
+  timePerQuestion?: number;
+  powerups_enabled?: boolean;
+  powerupsEnabled?: boolean;
   status: 'waiting' | 'active' | 'finished';
   totalPlayers?: number;
 }

@@ -131,7 +131,9 @@ Covering all topics tested by TCS, Infosys, Wipro, Amazon, and GATE:
 - Use analytics to identify weak topics and launch focused drills.
 
 ### 5. Host & Faculty Management Portal
-- Create custom quiz rooms and host live sessions.
+- Create a quiz from the host portal, then share its six-character room ID with students.
+- Students enter the room ID in the dashboard to join the host's waiting lobby before the quiz starts.
+- Set the quiz topic, difficulty, question count, timer, and power-up rules.
 - Question bank builder (Add, edit, delete, categorize).
 - Host-reviewed question authoring and management.
 - Export match results and class rankings to CSV.

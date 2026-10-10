@@ -200,6 +200,11 @@ export const App: React.FC = () => {
       return;
     }
 
+    const result = await api.getRoomByCode(code);
+    if (result.room?.status !== 'waiting') {
+      throw new Error('This quiz has already started and is no longer accepting students.');
+    }
+
     socket.emit('join_room', {
       roomCode: code,
       user: {
@@ -220,21 +225,30 @@ export const App: React.FC = () => {
     }
 
     try {
-      const res = await api.createRoom(config);
-      if (res.room) {
-        socket.emit('join_room', {
-          roomCode: res.room.code,
-          user: {
-            id: user?.id,
-            name: profile?.name || 'Host Commander',
-            avatar: profile?.avatar || '👑',
-            college: profile?.college || 'Host Control'
-          },
-          isHost: true
-        });
+      const res = await api.createRoom({
+        ...config,
+        title: config.title || 'Campus Placement Aptitude Challenge',
+        topic_id: config.topic_id ?? config.topicId ?? 'mixed',
+        difficulty: config.difficulty || 'medium',
+        question_count: config.question_count ?? config.questionCount ?? 10,
+        time_per_question: config.time_per_question ?? config.timePerQuestion ?? 20,
+        powerups_enabled: config.powerups_enabled ?? true
+      });
+      if (!res.room?.code) {
+        throw new Error('The quiz server did not return a room code.');
       }
+      socket.emit('join_room', {
+        roomCode: res.room.code,
+        user: {
+          id: user?.id,
+          name: profile?.name || 'Host Commander',
+          avatar: profile?.avatar || '👑',
+          college: profile?.college || 'Host Control'
+        },
+        isHost: true
+      });
     } catch (err) {
-      alert('Failed to create room.');
+      throw new Error(err instanceof Error ? err.message : 'Failed to create the quiz room.');
     }
   };
 
@@ -276,6 +290,7 @@ export const App: React.FC = () => {
 
   // Handler: Leave Current Room
   const handleLeaveRoom = () => {
+    socket.emit('leave_room');
     setActiveRoom(null);
     setCurrentView('dashboard');
   };
@@ -328,7 +343,7 @@ export const App: React.FC = () => {
         {currentView === 'topics' && (
           <TopicSelectionStudio
             onStartSoloPractice={(config) => handleStartCustomQuiz({ ...config, modeStyle: 'standard' })}
-            onCreateMultiplayerRoom={(config) => handleCreateMultiplayerRoom(config)}
+            onCreateMultiplayerRoom={handleCreateMultiplayerRoom}
             isHost={isHost}
           />
         )}

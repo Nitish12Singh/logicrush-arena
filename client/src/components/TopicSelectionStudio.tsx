@@ -39,7 +39,7 @@ interface TopicSelectionStudioProps {
     difficulty: string;
     questionCount: number;
     timePerQuestion: number;
-  }) => void;
+  }) => Promise<void>;
   isHost?: boolean;
 }
 
@@ -76,6 +76,8 @@ export const TopicSelectionStudio: React.FC<TopicSelectionStudioProps> = ({
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard' | 'mixed'>('medium');
   const [questionCount, setQuestionCount] = useState<number>(10);
   const [timePerQuestion, setTimePerQuestion] = useState<number>(25);
+  const [roomError, setRoomError] = useState('');
+  const [isLaunchingRoom, setIsLaunchingRoom] = useState(false);
 
   const toggleTopic = (id: string) => {
     if (id === 'mixed') {
@@ -110,14 +112,22 @@ export const TopicSelectionStudio: React.FC<TopicSelectionStudioProps> = ({
     });
   };
 
-  const handleLaunchRoom = () => {
-    if (onCreateMultiplayerRoom) {
-      onCreateMultiplayerRoom({
-        topicId: selectedTopicIds[0] || 'mixed',
-        difficulty,
-        questionCount,
-        timePerQuestion
-      });
+  const handleLaunchRoom = async () => {
+    if (onCreateMultiplayerRoom && !isLaunchingRoom) {
+      setIsLaunchingRoom(true);
+      setRoomError('');
+      try {
+        await onCreateMultiplayerRoom({
+          topicId: selectedTopicIds[0] || 'mixed',
+          difficulty,
+          questionCount,
+          timePerQuestion
+        });
+      } catch (err) {
+        setRoomError(err instanceof Error ? err.message : 'Could not create the quiz room.');
+      } finally {
+        setIsLaunchingRoom(false);
+      }
     }
   };
 
@@ -320,12 +330,14 @@ export const TopicSelectionStudio: React.FC<TopicSelectionStudioProps> = ({
             {isHost && onCreateMultiplayerRoom && (
               <button
                 onClick={handleLaunchRoom}
-                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/20 transition-all flex items-center justify-center gap-2"
+                disabled={isLaunchingRoom}
+                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 <Zap className="w-4 h-4" />
-                Create Multiplayer Room
+                {isLaunchingRoom ? 'Creating Quiz…' : 'Create Quiz Room'}
               </button>
             )}
+            {roomError && <p role="alert" className="text-xs font-semibold text-rose-400">{roomError}</p>}
           </div>
 
         </div>

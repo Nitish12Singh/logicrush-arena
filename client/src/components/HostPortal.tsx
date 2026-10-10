@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 interface HostPortalProps {
-  onCreateLiveRoom: (config: any) => void;
+  onCreateLiveRoom: (config: any) => Promise<void>;
 }
 
 export const HostPortal: React.FC<HostPortalProps> = ({ onCreateLiveRoom }) => {
@@ -30,6 +30,7 @@ export const HostPortal: React.FC<HostPortalProps> = ({ onCreateLiveRoom }) => {
 
   // Live Room Creation Modal State
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  const [isLaunchingRoom, setIsLaunchingRoom] = useState(false);
   const [roomTitle, setRoomTitle] = useState('Campus Placement Aptitude Challenge');
   const [roomTopic, setRoomTopic] = useState('mixed');
   const [roomDifficulty, setRoomDifficulty] = useState<'easy' | 'medium' | 'hard' | 'mixed'>('medium');
@@ -69,17 +70,28 @@ export const HostPortal: React.FC<HostPortalProps> = ({ onCreateLiveRoom }) => {
     }
   };
 
-  const handleLaunchRoomSubmit = (e: React.FormEvent) => {
+  const handleLaunchRoomSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onCreateLiveRoom({
-      title: roomTitle,
-      topic_id: roomTopic,
-      difficulty: roomDifficulty,
-      question_count: roomQCount,
-      time_per_question: roomTimeLimit,
-      powerups_enabled: roomPowerups
-    });
-    setIsCreatingRoom(false);
+    setIsLaunchingRoom(true);
+    setBannerMessage(null);
+    try {
+      await onCreateLiveRoom({
+        title: roomTitle.trim(),
+        topic_id: roomTopic,
+        difficulty: roomDifficulty,
+        question_count: roomQCount,
+        time_per_question: roomTimeLimit,
+        powerups_enabled: roomPowerups
+      });
+      setIsCreatingRoom(false);
+    } catch (err) {
+      setBannerMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to create the quiz room.'
+      });
+    } finally {
+      setIsLaunchingRoom(false);
+    }
   };
 
   const handleCreateQuestion = async (e: React.FormEvent) => {
@@ -141,7 +153,7 @@ export const HostPortal: React.FC<HostPortalProps> = ({ onCreateLiveRoom }) => {
             className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-extrabold text-sm shadow-xl shadow-emerald-500/20 hover:opacity-95 flex items-center gap-2"
           >
             <Play className="w-4 h-4 fill-white" />
-            Create & Launch Live Room
+            Create Quiz
           </button>
         </div>
       </div>
@@ -189,13 +201,18 @@ export const HostPortal: React.FC<HostPortalProps> = ({ onCreateLiveRoom }) => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
           <div className="relative w-full max-w-xl glass-panel-glow rounded-3xl p-6 sm:p-8 bg-dark-card border border-emerald-500/40 shadow-2xl">
             <h3 className="text-2xl font-black text-white font-['Outfit'] mb-1">
-              CONFIGURE LIVE ARENA ROOM
+              CREATE A HOSTED QUIZ
             </h3>
             <p className="text-xs text-slate-400 mb-6">
-              Set the rules, time pressure, and topic parameters for your live class or competition.
+              Choose the quiz settings. After creation, share the six-character room code with students so they can join.
             </p>
 
             <form onSubmit={handleLaunchRoomSubmit} className="space-y-4 text-xs">
+              {bannerMessage?.type === 'error' && (
+                <p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-950/60 p-3 text-rose-300">
+                  {bannerMessage.text}
+                </p>
+              )}
               <div>
                 <label className="block font-bold text-slate-300 mb-1">Room Title / Class Name</label>
                 <input
@@ -293,9 +310,10 @@ export const HostPortal: React.FC<HostPortalProps> = ({ onCreateLiveRoom }) => {
                 </button>
                 <button
                   type="submit"
+                  disabled={isLaunchingRoom}
                   className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold shadow-lg shadow-emerald-500/20 hover:opacity-95"
                 >
-                  Launch Live Room
+                  {isLaunchingRoom ? 'Creating Quiz…' : 'Create Quiz & Get Room Code'}
                 </button>
               </div>
             </form>
@@ -314,7 +332,7 @@ export const HostPortal: React.FC<HostPortalProps> = ({ onCreateLiveRoom }) => {
 
             {myRooms.length === 0 ? (
               <div className="text-center py-12 text-slate-400 text-xs">
-                No rooms created yet. Click "Create & Launch Live Room" to start hosting for your class!
+                No quizzes created yet. Create a quiz to get a room code that students can enter from their dashboard.
               </div>
             ) : (
               <div className="space-y-3">
@@ -329,7 +347,7 @@ export const HostPortal: React.FC<HostPortalProps> = ({ onCreateLiveRoom }) => {
                         <span className="text-xs font-bold text-white">{room.title}</span>
                       </div>
                       <p className="text-[11px] text-slate-400 mt-1">
-                        Topic: {room.topicId} • {room.question_count} Qs • {room.time_per_question}s / Q • Status: {room.status}
+                        Topic: {room.topicId || room.topic_id || 'mixed'} • {room.question_count ?? room.questionCount ?? 10} Qs • {room.time_per_question ?? room.timePerQuestion ?? 20}s / Q • Status: {room.status}
                       </p>
                     </div>
 

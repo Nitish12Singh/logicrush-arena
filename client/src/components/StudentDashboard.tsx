@@ -33,7 +33,7 @@ import {
 
 interface StudentDashboardProps {
   onQuickPlay: () => void;
-  onJoinRoom: (code: string) => void;
+  onJoinRoom: (code: string) => Promise<void>;
   onOpenCustomQuizCreator: (initialTopicId?: string) => void;
   onOpenTopics: () => void;
   onOpenAnalytics: () => void;
@@ -58,6 +58,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 }) => {
   const { user, profile } = useAuth();
   const [joinCodeInput, setJoinCodeInput] = useState('');
+  const [isJoiningRoom, setIsJoiningRoom] = useState(false);
+  const [joinRoomError, setJoinRoomError] = useState('');
   const [randomQuote] = useState(
     () => PLAYFUL_MICROCOPY[Math.floor(Math.random() * PLAYFUL_MICROCOPY.length)]
   );
@@ -74,10 +76,18 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       .finally(() => setIsLoadingStats(false));
   }, []);
 
-  const handleJoinSubmit = (e: React.FormEvent) => {
+  const handleJoinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (joinCodeInput.trim()) {
-      onJoinRoom(joinCodeInput.trim().toUpperCase());
+    if (joinCodeInput.trim() && !isJoiningRoom) {
+      setJoinRoomError('');
+      setIsJoiningRoom(true);
+      try {
+        await onJoinRoom(joinCodeInput.trim().toUpperCase());
+      } catch (err) {
+        setJoinRoomError(err instanceof Error ? err.message : 'Could not join this quiz. Check the room code and try again.');
+      } finally {
+        setIsJoiningRoom(false);
+      }
     }
   };
 
@@ -222,27 +232,37 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             </div>
             <h3 className="text-xl font-bold text-white mb-1">Join Room</h3>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Enter the 6-character room join code provided by your professor, host, or tournament coordinator.
+              Enter the 6-character quiz room ID shared by your host.
             </p>
           </div>
 
           <form onSubmit={handleJoinSubmit} className="mt-4 flex gap-2">
             <input
               type="text"
-              maxLength={8}
+              maxLength={6}
               value={joinCodeInput}
-              onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
-              placeholder="e.g. RUSH26"
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-center font-mono font-bold text-sm tracking-widest text-white uppercase focus:outline-none focus:border-cyan-400"
+              onChange={(e) => {
+                setJoinCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6));
+                setJoinRoomError('');
+              }}
+              placeholder="ROOM ID"
+              aria-label="Quiz room ID"
+              autoComplete="off"
+              className="w-full min-w-0 bg-slate-950 border border-slate-700 rounded-xl px-2 py-2.5 text-center font-mono font-bold text-sm tracking-widest text-white uppercase focus:outline-none focus:border-cyan-400"
             />
             <button
               type="submit"
-              disabled={!joinCodeInput.trim()}
+              disabled={joinCodeInput.length !== 6 || isJoiningRoom}
               className="px-5 py-2.5 rounded-xl bg-brand-cyan hover:bg-cyan-400 text-slate-950 font-extrabold text-sm transition-colors disabled:opacity-40 shrink-0"
             >
-              Join
+              {isJoiningRoom ? 'Joining…' : 'Join Quiz'}
             </button>
           </form>
+          {joinRoomError && (
+            <p role="alert" className="mt-2 text-xs font-semibold text-rose-400">
+              {joinRoomError}
+            </p>
+          )}
         </div>
 
       </div>

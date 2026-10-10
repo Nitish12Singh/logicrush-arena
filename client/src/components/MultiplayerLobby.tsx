@@ -45,9 +45,9 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
   // Host settings state
   const [topicId, setTopicId] = useState(room.topicId || 'mixed');
   const [difficulty, setDifficulty] = useState(room.difficulty || 'medium');
-  const [questionCount, setQuestionCount] = useState(room.question_count || 10);
-  const [timePerQuestion, setTimePerQuestion] = useState(room.time_per_question || 20);
-  const [powerupsEnabled, setPowerupsEnabled] = useState(room.powerups_enabled ?? true);
+  const [questionCount, setQuestionCount] = useState(room.questionCount ?? room.question_count ?? 10);
+  const [timePerQuestion, setTimePerQuestion] = useState(room.timePerQuestion ?? room.time_per_question ?? 20);
+  const [powerupsEnabled, setPowerupsEnabled] = useState(room.powerupsEnabled ?? room.powerups_enabled ?? true);
 
   useEffect(() => {
     socket.on('new_chat_message', (msg) => {
@@ -113,7 +113,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
               {room.title || 'LogicRush Arena Match'}
             </h2>
             <p className="text-xs text-slate-400 mt-1">
-              Invite your classmates or team. Match begins as soon as the host hits Start.
+              Share this room ID with students. They can enter it on their dashboard before you start the quiz.
             </p>
           </div>
 
@@ -259,6 +259,39 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                 </div>
 
                 <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Difficulty</label>
+                  <select
+                    value={difficulty}
+                    onChange={(e) => {
+                      setDifficulty(e.target.value);
+                      handleHostSettingsUpdate({ difficulty: e.target.value });
+                    }}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-400"
+                  >
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                    <option value="mixed">Mixed</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Questions</label>
+                  <select
+                    value={questionCount}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      setQuestionCount(val);
+                      handleHostSettingsUpdate({ questionCount: val });
+                    }}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-400"
+                  >
+                    <option value={5}>5 Questions</option>
+                    <option value={10}>10 Questions</option>
+                    <option value={15}>15 Questions</option>
+                    <option value={20}>20 Questions</option>
+                  </select>
+                </div>
+                <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1">Time per Question</label>
                   <select
                     value={timePerQuestion}
@@ -275,6 +308,18 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                     <option value={45}>45 Seconds (Complex)</option>
                   </select>
                 </div>
+                <label className="flex items-center gap-2 self-end p-2 text-xs font-semibold text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={powerupsEnabled}
+                    onChange={(e) => {
+                      setPowerupsEnabled(e.target.checked);
+                      handleHostSettingsUpdate({ powerupsEnabled: e.target.checked });
+                    }}
+                    className="accent-emerald-500"
+                  />
+                  Enable power-ups
+                </label>
               </div>
             </div>
           )}

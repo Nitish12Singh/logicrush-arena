@@ -19,25 +19,26 @@ export function setupGameSocket(io) {
         const code = (roomCode || '').toUpperCase().trim();
         let room = activeRooms.get(code);
 
-        // If room not in memory, check DB or create if host
+        // Rooms must be created through the authenticated REST endpoint.
         if (!room) {
           const dbRoom = await queryOne('SELECT * FROM rooms WHERE code = $1', [code]);
-          if (!dbRoom && !isHost) {
+          if (!dbRoom) {
             return socket.emit('error_message', { message: `Room ${code} not found.` });
           }
 
           room = {
-            id: dbRoom ? dbRoom.id : ('room_' + code),
+            id: dbRoom.id,
             code: code,
-            hostId: dbRoom ? dbRoom.host_id : (user?.id || 'host_user'),
-            hostSocketId: isHost ? socket.id : null,
-            title: dbRoom ? dbRoom.title : 'LogicRush Live Match',
-            topicId: dbRoom ? (dbRoom.topic_id || 'mixed') : 'mixed',
-            difficulty: dbRoom ? (dbRoom.difficulty || 'medium') : 'medium',
-            questionCount: dbRoom ? (dbRoom.question_count || 10) : 10,
-            timePerQuestion: dbRoom ? (dbRoom.time_per_question || 20) : 20,
-            powerupsEnabled: dbRoom ? (dbRoom.powerups_enabled !== 0) : true,
-            status: dbRoom ? (dbRoom.status || 'waiting') : 'waiting',
+            hostId: dbRoom.host_id,
+            maxPlayers: dbRoom.max_players || 50,
+            hostSocketId: null,
+            title: dbRoom.title,
+            topicId: dbRoom.topic_id || 'mixed',
+            difficulty: dbRoom.difficulty || 'medium',
+            questionCount: dbRoom.question_count || 10,
+            timePerQuestion: dbRoom.time_per_question || 20,
+            powerupsEnabled: dbRoom.powerups_enabled !== false && dbRoom.powerups_enabled !== 0,
+            status: dbRoom.status || 'waiting',
             currentQuestionIndex: 0,
             questions: [],
             players: new Map(), // socketId -> playerData
@@ -49,12 +50,20 @@ export function setupGameSocket(io) {
           activeRooms.set(code, room);
         }
 
-        currentRoomCode = code;
         currentUserId = user?.id || socket.id;
 
+        if (isHost && room.hostId !== currentUserId) {
+          return socket.emit('error_message', { message: 'Only the host who created this quiz can host its room.' });
+        }
+        if (room.status !== 'waiting') {
+          return socket.emit('error_message', { message: 'This quiz has already started and is no longer accepting players.' });
+        }
+
+        const joiningAsHost = isHost && room.hostId === currentUserId;
+        currentRoomCode = code;
         socket.join(code);
 
-        if (isHost) {
+        if (joiningAsHost) {
           room.hostSocketId = socket.id;
         }
 
@@ -69,8 +78,8 @@ export function setupGameSocket(io) {
           score: 0,
           streak: 0,
           correctCount: 0,
-          isReady: isHost ? true : false,
-          isHost,
+          isReady: joiningAsHost,
+          isHost: joiningAsHost,
           isSpectator,
           isDisqualified: false,
           tabViolations: 0,
@@ -84,7 +93,7 @@ export function setupGameSocket(io) {
         socket.emit('room_joined', {
           room: serializeRoom(room),
           player: playerData,
-          isHost: room.hostId === currentUserId || isHost
+          isHost: room.hostId === currentUserId
         });
 
         // Broadcast player list update to room
@@ -121,10 +130,10 @@ export function setupGameSocket(io) {
       if (!room || room.hostSocketId !== socket.id) return;
 
       if (topicId) room.topicId = topicId;
-      if (difficulty) room.difficulty = difficulty;
-      if (questionCount) room.questionCount = questionCount;
-      if (timePerQuestion) room.timePerQuestion = timePerQuestion;
-      if (powerupsEnabled !== undefined) room.powerupsEnabled = powerupsEnabled;
+      if (['easy', 'medium', 'hard', 'mixed'].includes(difficulty)) room.difficulty = difficulty;
+      if (Number.isInteger(questionCount) && questionCount >= 1 && questionCount <= 50) room.questionCount = questionCount;
+      if (Number.isInteger(timePerQuestion) && timePerQuestion >= 5 && timePerQuestion <= 120) room.timePerQuestion = timePerQuestion;
+      if (typeof powerupsEnabled === 'boolean') room.powerupsEnabled = powerupsEnabled;
 
       io.to(currentRoomCode).emit('room_settings_updated', {
         topicId: room.topicId,
@@ -149,20 +158,43 @@ export function setupGameSocket(io) {
       // Fetch randomized questions for this match
       let matchQuestions = [];
       let dbQuestions = [];
+      const useDifficulty = ['easy', 'medium', 'hard'].includes(room.difficulty);
       try {
         if (room.topicId && room.topicId !== 'all' && room.topicId !== 'mixed') {
-          dbQuestions = await query('SELECT * FROM questions WHERE topic_id = $1 ORDER BY RANDOM() LIMIT $2', [room.topicId, room.questionCount]);
+          dbQuestions = await query(
+            `SELECT * FROM questions WHERE topic_id = $1${useDifficulty ? ' AND difficulty = $2' : ''} ORDER BY RANDOM() LIMIT $${useDifficulty ? 3 : 2}`,
+            useDifficulty ? [room.topicId, room.difficulty, room.questionCount] : [room.topicId, room.questionCount]
+          );
         } else {
-          dbQuestions = await query('SELECT * FROM questions ORDER BY RANDOM() LIMIT $1', [room.questionCount]);
+          dbQuestions = await query(
+            `SELECT * FROM questions${useDifficulty ? ' WHERE difficulty = $1' : ''} ORDER BY RANDOM() LIMIT $${useDifficulty ? 2 : 1}`,
+            useDifficulty ? [room.difficulty, room.questionCount] : [room.questionCount]
+          );
         }
 
         if (dbQuestions.length < room.questionCount) {
           const additionalQuestions = await query(
+            `SELECT * FROM questions${useDifficulty ? ' WHERE difficulty = $1' : ''} ORDER BY RANDOM() LIMIT $${useDifficulty ? 2 : 1}`,
+            useDifficulty ? [room.difficulty, Math.max(room.questionCount, 50)] : [Math.max(room.questionCount, 50)]
+          );
+          const selectedIds = new Set(dbQuestions.map(q => q.id || q.statement));
+          for (const question of additionalQuestions) {
+            const key = question.id || question.statement;
+            if (!selectedIds.has(key)) {
+              dbQuestions.push(question);
+              selectedIds.add(key);
+            }
+            if (dbQuestions.length >= room.questionCount) break;
+          }
+        }
+
+        if (dbQuestions.length < room.questionCount && useDifficulty) {
+          const fallbackQuestions = await query(
             'SELECT * FROM questions ORDER BY RANDOM() LIMIT $1',
             [Math.max(room.questionCount, 50)]
           );
           const selectedIds = new Set(dbQuestions.map(q => q.id || q.statement));
-          for (const question of additionalQuestions) {
+          for (const question of fallbackQuestions) {
             const key = question.id || question.statement;
             if (!selectedIds.has(key)) {
               dbQuestions.push(question);
@@ -193,6 +225,10 @@ export function setupGameSocket(io) {
         options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options
       }));
 
+      if (matchQuestions.length === 0) {
+        return socket.emit('error_message', { message: 'No questions are available for this quiz yet. Please add questions to the bank and try again.' });
+      }
+
       room.questions = matchQuestions;
       room.currentQuestionIndex = 0;
       room.status = 'active';
@@ -205,6 +241,21 @@ export function setupGameSocket(io) {
         p.isDisqualified = false;
         p.tabViolations = 0;
         p.powerups = { fiftyFifty: 1, doublePoints: 1, extraTime: 1, hintCard: 1, streakShield: 1 };
+      });
+
+      socket.on('leave_room', () => {
+        if (!currentRoomCode) return;
+        const room = activeRooms.get(currentRoomCode);
+        if (room) {
+          room.players.delete(socket.id);
+          if (room.hostSocketId === socket.id) room.hostSocketId = null;
+          io.to(currentRoomCode).emit('room_players_updated', {
+            players: Array.from(room.players.values()).filter(p => !p.isSpectator),
+            totalPlayers: Array.from(room.players.values()).filter(p => !p.isSpectator).length
+          });
+        }
+        socket.leave(currentRoomCode);
+        currentRoomCode = null;
       });
 
       io.to(currentRoomCode).emit('game_starting', {
@@ -585,8 +636,12 @@ function serializeRoom(room) {
     topicId: room.topicId,
     difficulty: room.difficulty,
     questionCount: room.questionCount,
+    question_count: room.questionCount,
     timePerQuestion: room.timePerQuestion,
+    time_per_question: room.timePerQuestion,
     powerupsEnabled: room.powerupsEnabled,
+    powerups_enabled: room.powerupsEnabled,
+    max_players: room.maxPlayers || 50,
     status: room.status,
     totalPlayers: room.players.size
   };
